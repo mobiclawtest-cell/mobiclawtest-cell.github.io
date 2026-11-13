@@ -1,0 +1,49 @@
+name: Deploy Emberfall Chronicles
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '0 4 * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch latest build from source repository
+        run: |
+          set -euo pipefail
+          SRC="https://raw.githubusercontent.com/mobiclawtest-cell/emberfall-public/gh-pages"
+          curl -fsSL -o index.html "$SRC/index.html"
+          mkdir -p assets
+          grep -oE 'assets/[A-Za-z0-9._-]+' index.html | sort -u > /tmp/assetlist || true
+          while read -r f; do
+            [ -z "$f" ] && continue
+            echo "fetching $f"
+            curl -fsSL -o "$f" "$SRC/$f"
+          done < /tmp/assetlist
+          touch .nojekyll
+          echo "--- files ---"
+          ls -la
+          echo "--- assets ---"
+          ls -la assets
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to deploy"
+          else
+            git commit -m "Deploy Emberfall Chronicles build"
+            git push
+          fi
