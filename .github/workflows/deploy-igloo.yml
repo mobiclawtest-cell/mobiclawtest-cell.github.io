@@ -1,0 +1,63 @@
+name: Build & publish Nival
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-igloo.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Fetch project source
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/build
+          cd /tmp/build
+          OK=""
+          for URL in "https://n.uguu.se/fmYipOovQvce.tar.gz" "https://pomf2.lain.la/f/2ok7q65r.tar.gz" "https://qu.ax/tj42l"; do
+            echo "trying $URL"
+            if curl -fsSL --retry 3 --retry-all-errors --max-time 150 -o src.tgz "$URL"; then
+              echo "downloaded $(wc -c < src.tgz) bytes"
+              if tar xzf src.tgz; then OK=1; break; fi
+            fi
+          done
+          if [ -z "$OK" ]; then echo "ALL MIRRORS FAILED"; exit 1; fi
+          ls -la
+
+      - name: Install and build
+        run: |
+          set -euo pipefail
+          cd /tmp/build
+          npm install --no-audit --no-fund
+          npx tsc --noEmit
+          npx vite build
+          ls -la dist
+
+      - name: Publish into /igloo
+        run: |
+          set -euo pipefail
+          rm -rf igloo
+          mkdir -p igloo
+          cp -r /tmp/build/dist/. igloo/
+          touch igloo/.nojekyll
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A igloo
+          if git diff --cached --quiet; then
+            echo "no changes to publish"
+          else
+            git commit -m "Publish Nival build [skip ci]"
+            git push
+          fi
